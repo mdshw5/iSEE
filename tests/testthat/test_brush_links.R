@@ -51,24 +51,24 @@ test_that("brush link updates work correctly", {
     # Deleting edges that are there.
     expect_true(igraph::are_adjacent(g, "featExprPlot1", "redDimPlot1"))
     expect_equal(sum(g[]), 3)
-    g2 <- iSEE:::.choose_new_brush_source(g, "redDimPlot1", "", "featExprPlot1")
+    g2 <- iSEE:::.choose_new_brush_source(g, "redDimPlot1", "---", "featExprPlot1")
     expect_false(igraph::are_adjacent(g2, "featExprPlot1", "redDimPlot1"))
     expect_equal(sum(g2[]), 2)
 
     # Deleting edges that are not there makes no difference.
     expect_false(igraph::are_adjacent(g, "colDataPlot1", "redDimPlot1"))
-    g2 <- iSEE:::.choose_new_brush_source(g, "redDimPlot1", "", "colDataPlot1")
+    g2 <- iSEE:::.choose_new_brush_source(g, "redDimPlot1", "---", "colDataPlot1")
     expect_equal(g[], g2[])
 
     # Adding edges without anything being there previously. 
     expect_identical(character(0), names(igraph::adjacent_vertices(g, "colDataPlot1", mode = "in")[[1]])) # no parents.
     expect_equal(sum(g[]), 3)
-    g2 <- iSEE:::.choose_new_brush_source(g, "colDataPlot1", "featExprPlot3", "")
+    g2 <- iSEE:::.choose_new_brush_source(g, "colDataPlot1", "featExprPlot3", "---")
     expect_false(igraph::are_adjacent(g2, "featExprPlot1", "colDataPlot2"))
     expect_equal(sum(g2[]), 4)
 
     # Adding links that are already there do nothing.    
-    g2 <- iSEE:::.choose_new_brush_source(g, "redDimPlot1", "featExprPlot1", "")
+    g2 <- iSEE:::.choose_new_brush_source(g, "redDimPlot1", "featExprPlot1", "---")
     expect_equal(g[], g2[])
 
     # Updating edges from what previously existed.
@@ -102,8 +102,8 @@ test_that("brush source destruction works correctly", {
     expect_false(igraph::are_adjacent(pObjects$brush_links, "featExprPlot1", "redDimPlot1"))
     expect_false(igraph::are_adjacent(pObjects$brush_links, "featExprPlot1", "featExprPlot1"))
     expect_equal(sum(pObjects$brush_links[]), 1)
-    expect_identical("", pObjects$memory$redDimPlot[1,iSEE:::.brushByPlot])
-    expect_identical("", pObjects$memory$featExprPlot[1,iSEE:::.brushByPlot])
+    expect_identical("---", pObjects$memory$redDimPlot[1,iSEE:::.brushByPlot])
+    expect_identical("---", pObjects$memory$featExprPlot[1,iSEE:::.brushByPlot])
 
     # Destroying a transmitter/receiver
     pObjects <- new.env()
@@ -121,8 +121,8 @@ test_that("brush source destruction works correctly", {
     expect_false(igraph::are_adjacent(pObjects$brush_links, "featExprPlot1", "redDimPlot1"))
     expect_false(igraph::are_adjacent(pObjects$brush_links, "redDimPlot1", "colDataPlot2"))
     expect_equal(sum(pObjects$brush_links[]), 1)
-    expect_identical("", pObjects$memory$redDimPlot[1,iSEE:::.brushByPlot]) 
-    expect_identical("", pObjects$memory$colDataPlot[2,iSEE:::.brushByPlot])
+    expect_identical("---", pObjects$memory$redDimPlot[1,iSEE:::.brushByPlot]) 
+    expect_identical("---", pObjects$memory$colDataPlot[2,iSEE:::.brushByPlot])
 
     # Destroying a receiver.
     pObjects <- new.env()
@@ -135,12 +135,12 @@ test_that("brush source destruction works correctly", {
 
     expect_false(igraph::are_adjacent(pObjects$brush_links, "redDimPlot1", "colDataPlot2"))
     expect_equal(sum(pObjects$brush_links[]), 2)
-    expect_identical("", pObjects$memory$colDataPlot[2,iSEE:::.brushByPlot])
+    expect_identical("---", pObjects$memory$colDataPlot[2,iSEE:::.brushByPlot])
 })
 
 test_that("brush dependent identification works correctly", {
     # Setting up a hierarchy.          
-    redDimArgs[1,iSEE:::.brushByPlot] <- ""
+    redDimArgs[1,iSEE:::.brushByPlot] <- "---"
     featExprArgs[1,iSEE:::.brushByPlot] <- "Reduced dimension plot 1"
     featExprArgs[2,iSEE:::.brushByPlot] <- "Reduced dimension plot 1"
     colDataArgs[1,iSEE:::.brushByPlot] <- "Feature expression plot 1"
@@ -177,4 +177,25 @@ test_that("brush dependent identification works correctly", {
     g <- iSEE:::.spawn_brush_chart(memory)
     expect_identical(iSEE:::.get_brush_dependents(g, "redDimPlot1", memory),
                      c("featExprPlot1", "featExprPlot2"))
+})
+
+test_that("brush identity function works properly", {
+    expect_true(iSEE:::.identical_brushes(list(xmin=1, xmax=2, ymin=10, ymax=20),
+                                          list(xmin=1, xmax=2, ymin=10, ymax=20)))
+
+    # Confirming correct failure.
+    expect_false(iSEE:::.identical_brushes(list(xmin=1, xmax=2, ymin=10, ymax=20),
+                                           list(xmin=1, xmax=2, ymin=11, ymax=20)))
+    expect_false(iSEE:::.identical_brushes(list(xmin=1, xmax=2, ymin=10, ymax=20),
+                                           list(xmin=1, xmax=2, ymin=10, ymax=21)))
+    expect_false(iSEE:::.identical_brushes(list(xmin=1, xmax=2, ymin=10, ymax=20),
+                                           list(xmin=0, xmax=2, ymin=10, ymax=20)))
+    expect_false(iSEE:::.identical_brushes(list(xmin=1, xmax=2, ymin=10, ymax=20),
+                                           list(xmin=1, xmax=3, ymin=10, ymax=20)))
+
+    # Avoid indicating that it's different when the error is very small. 
+    expect_true(iSEE:::.identical_brushes(list(xmin=1, xmax=2, ymin=10, ymax=20),
+                                          list(xmin=1, xmax=2.0000001, ymin=10, ymax=20)))
+    expect_false(iSEE:::.identical_brushes(list(xmin=1, xmax=2, ymin=10, ymax=20),
+                                          list(xmin=1, xmax=2.0001, ymin=10, ymax=20)))
 })

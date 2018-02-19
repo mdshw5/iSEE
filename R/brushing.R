@@ -13,7 +13,7 @@
     cur_edges <- vector("list",N)
     for (i in seq_len(N)) {
       cur_parent <- memory[[mode]][i, .brushByPlot]
-      if (cur_parent!="") {
+      if (cur_parent!=.noSelection) {
         cur_edges[[i]] <- c(.decoded2encoded(cur_parent), cur_panels[i])
       }
     }
@@ -33,10 +33,10 @@
 # Replaces the edge in the plot, if the choice of plot to receive from
 # in the current panel changes.
 {
-  if (old_parent!="" && are_adjacent(graph, old_parent, panel)) {
+  if (old_parent!=.noSelection && are_adjacent(graph, old_parent, panel)) {
     graph[from=old_parent,to=panel] <- 0
   }
-  if (new_parent!="" && !are_adjacent(graph, new_parent, panel)) {
+  if (new_parent!=.noSelection && !are_adjacent(graph, new_parent, panel)) {
     graph <- add_edges(graph, c(new_parent, panel))
   }
   return(graph)
@@ -57,7 +57,7 @@
     for (i in seq_along(all_kids)) {
         type <- enc$Type[i]
         ID <- enc$ID[i]
-        pObjects$memory[[type]][ID, .brushByPlot] <- ""
+        pObjects$memory[[type]][ID, .brushByPlot] <- .noSelection
     }
 
     # Destroying self memory of any transmitting brush, as there
@@ -65,7 +65,7 @@
     # plot is added back to the UI. This ensures memory is valid,
     # in line with '.sanitize_memory()' in misc.R.
     self <- .split_encoded(panel)
-    pObjects$memory[[self$Type]][self$ID, .brushByPlot] <- ""
+    pObjects$memory[[self$Type]][self$ID, .brushByPlot] <- .noSelection
 
     # Destroying the edges.
     pObjects$brush_links <- graph - incident(graph, panel, mode="all")
@@ -100,53 +100,48 @@
     return(old_children)
 }
 
-.execute_brushed_table <- function(i, memory, se, all_coordinates) 
-# This function implements the effect of brushing from a transmitting
-# rowDataPlot to a receiving rowStatTable.
+.identical_brushes <- function(old_brush, new_brush)
+# Check whether the brush coordinates have actually changed. 
 {
-    col_searches <- memory$rowStatTable[i, .rowStatColSearch][[1]]
-    transmitter <- memory$rowStatTable[i, .brushByPlot]
-    if (transmitter=="") {
-        return(col_searches)      
+    old_null <- is.null(old_brush) 
+    new_null <- is.null(new_brush)
+    if (old_null || new_null) {
+        return(old_null==new_null)
     }
 
-    # Resetting all of the column searches is the only safe approach, 
-    # as there's no guarantee that brushes from other plots are cleared.
-    enc <- .encode_panel_name(transmitter)
-    transmit_param <- memory[[enc$Type]][enc$ID,]
-    brush_data <- transmit_param[, .brushData][[1]]
-    col_searches <- character(length(col_searches))    
-    if (is.null(brush_data)) {
-        return(col_searches)
+    xspan <- old_brush$xmax - old_brush$xmin
+    tol <- xspan * 1e-6
+    if (abs(old_brush$xmin - new_brush$xmin) > tol 
+        || abs(old_brush$xmax - new_brush$xmax) > tol) {
+      return(FALSE)        
     }
 
-    # Modifying the y-axis search column field. 
-    transmit_y <- transmit_param[, .rowDataYAxis]
-    y_dex <- match(transmit_y, colnames(rowData(se)))
-    transmit_enc <- paste0(enc$Type, enc$ID)
-    col_searches[[y_dex]] <- .compress_brush(brush_data$ymin, brush_data$ymax, all_coordinates[[transmit_enc]]$Y)
-
-    # Modifying the x-axis search column field.
-    if (transmit_param[, .rowDataXAxis] == .rowDataXAxisRowDataTitle) {
-        transmit_x <- transmit_param[, .rowDataXAxisRowData]
-        x_dex <- match(transmit_x, colnames(rowData(se)))
-        col_searches[[x_dex]] <- .compress_brush(brush_data$xmin, brush_data$xmax, all_coordinates[[transmit_enc]]$X)
+    yspan <- old_brush$ymax - old_brush$ymin
+    tol <- yspan * 1e-6
+    if (abs(old_brush$ymin - new_brush$ymin) > tol 
+        || abs(old_brush$ymax - new_brush$ymax) > tol) {
+      return(FALSE)        
     }
-    return(col_searches)
+
+    return(TRUE)
 }
 
-.compress_brush <- function(lower, upper, coordinates) {
-    if (is.numeric(coordinates)) {
-        return(paste(lower, "...", upper))
-    } else {
-        lower <- max(1, ceiling(lower))
-        upper <- min(floor(upper), nlevels(coordinates))
-        if (upper < lower) {
-            return("$x") # this can never match.
-        } else {
-            return(paste(levels(coordinates)[lower:upper], collapse="|"))
+.transmitted_brush <- function(transmitter, memory) 
+# Encodes the transmitter name, and checks whether a brush
+# currently exists in the memory of the transmitting plot.
+{ 
+    brush <- FALSE
+    encoded <- .noSelection
+    if (transmitter!=.noSelection) {
+        enc <- .encode_panel_name(transmitter)
+        encoded <- paste0(enc$Type, enc$ID)
+        if (.any_point_selection(enc$Type, enc$ID, memory)) { 
+            brush <- TRUE
         }
     }
+    return(list(brush=brush, encoded=encoded))
 }
 
-
+.any_point_selection <- function(mode, i, memory) {
+    !is.null(memory[[mode]][,.brushData][[i]]) || !is.null(memory[[mode]][,.lassoData][[i]])
+}
